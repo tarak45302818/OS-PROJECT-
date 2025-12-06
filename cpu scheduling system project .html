@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CPU Scheduling Simulator — Preemptive + Fancy Anim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>
+  :root{
+    --bg:#041024; --card:#071833; --muted:#9fb0c8; --accent:#7c3aed;
+    --neon: rgba(124,58,237,0.18);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; padding:28px; color:#e7f0fb;
+    background: radial-gradient(1200px 400px at 10% 10%, rgba(12,34,66,0.6), transparent),
+                linear-gradient(180deg,#02102a 0%, #031428 60%);
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  }
+
+  .app{max-width:1150px;margin:0 auto}
+  header{display:flex;gap:14px;align-items:center;margin-bottom:18px}
+  header .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#06b6d4);display:flex;align-items:center;justify-content:center;font-weight:800}
+  h1{font-size:20px;margin:0}
+  p.lead{color:var(--muted);margin:0;font-size:13px}
+
+  .layout{display:grid;grid-template-columns:380px 1fr;gap:20px}
+  @media (max-width:980px){ .layout{grid-template-columns:1fr} }
+
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:18px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  input[type=text], input[type=number], select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .small{width:110px}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;background:var(--accent);border:none;color:white;cursor:pointer;box-shadow:0 8px 26px var(--neon);transition:transform .14s ease}
+  .btn:active{transform:translateY(1px)}
+  .muted{color:var(--muted);font-size:13px}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{padding:8px;text-align:left;font-size:13px}
+  th{color:var(--muted);font-weight:600}
+  tbody tr{background:linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));border-radius:8px}
+  .pid-badge{display:inline-block;padding:6px 8px;border-radius:8px;font-weight:700;color:white}
+
+  .gantt-wrap{min-height:340px}
+  .gantt{height:96px;position:relative;margin-top:12px;border-radius:10px;overflow:hidden;background:linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));padding:12px;border:1px solid rgba(255,255,255,0.02)}
+  .bar{position:absolute;top:18px;height:60px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#021028;font-weight:800;box-shadow:0 10px 26px rgba(2,6,23,0.6);transform-origin:left;opacity:0}
+  .bar .lab{pointer-events:none;font-size:13px}
+  .bar.glow{box-shadow:0 6px 20px rgba(124,58,237,0.28), 0 0 20px rgba(124,58,237,0.08) inset}
+  .tooltip{position:fixed;padding:8px 10px;border-radius:8px;background:#071029;border:1px solid rgba(255,255,255,0.03);font-size:13px;color:var(--muted);display:none;z-index:9999}
+
+  .stats{display:flex;gap:12px;margin-top:14px}
+  .stat{flex:1;padding:12px;border-radius:10px;background:rgba(255,255,255,0.02);text-align:center}
+  .stat h3{margin:0;font-size:18px}
+  .stat p{margin:6px 0 0;color:var(--muted)}
+
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+  footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
+
+  /* subtle animated gradient lines */
+  .gantt:after{content:'';position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.02),transparent)}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo">CPU</div>
+      <div>
+        <h1>CPU Scheduling Simulator</h1>
+        <p class="lead">FCFS, SJF, SRTF (preemptive), Priority (preemptive & non), Round Robin</p>
+      </div>
+    </header>
+
+    <div class="layout">
+      <div class="card">
+        <label>Process inputs</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end">
+          <div>
+            <label>PID (auto)</label>
+            <input id="pid" type="text" value="P1" disabled />
+          </div>
+          <div>
+            <label>Arrival Time</label>
+            <input id="arrival" type="number" min="0" value="0" />
+          </div>
+          <div>
+            <label>Burst Time</label>
+            <input id="burst" type="number" min="1" value="4" />
+          </div>
+          <div>
+            <label>Priority (lower = higher)</label>
+            <input id="priority" type="number" min="0" value="1" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button id="addBtn" class="btn">Add Process</button>
+          <button id="clearBtn" class="btn" style="background:#334155">Clear</button>
+        </div>
+
+        <label style="margin-top:12px">Algorithm</label>
+        <select id="algorithm">
+          <option value="fcfs">FCFS (First-Come First-Serve)</option>
+          <option value="sjf">SJF (Shortest Job First) — Non-preemptive</option>
+          <option value="srtf">SRTF (Shortest Remaining Time First) — Preemptive SJF</option>
+          <option value="priority">Priority — Non-preemptive</option>
+          <option value="pp">Priority (Preemptive)</option>
+          <option value="rr">Round Robin</option>
+        </select>
+
+        <div class="controls">
+          <div>
+            <label>Quantum (for RR)</label>
+            <input id="quantum" type="number" min="1" value="2" class="small" />
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:8px;margin-left:auto">
+            <button id="runBtn" class="btn" title="Compute and render instantly">Run</button>
+            <button id="simulateBtn" class="btn" style="background:#06b6d4" title="Animated play">Animate</button>
+          </div>
+        </div>
+
+        <table aria-label="process-table">
+          <thead><tr><th>PID</th><th>Arrival</th><th>Burst</th><th>Priority</th><th></th></tr></thead>
+          <tbody id="procTable"></tbody>
+        </table>
+
+        <div class="hint">Tip: Add multiple processes, then choose an algorithm. Use Animate for a visual run.</div>
+      </div>
+
+      <div>
+        <div class="card gantt-wrap">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>Gantt Chart</strong>
+            <div class="muted">Time unit = 1</div>
+          </div>
+
+          <div id="gantt" class="gantt" title="Gantt Chart"></div>
+
+          <div class="stats" id="stats"></div>
+
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button id="exportBtn" class="btn" style="background:#2563eb">Export CSV</button>
+            <button id="resetBtn" class="btn" style="background:#ef4444">Reset</button>
+          </div>
+        </div>
+        <footer></footer>
+      </div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tip"></div>
+
+<script>
+/* ----------------------
+   Core UI & state
+   ---------------------- */
+const COLORS = ['#7c3aed','#06b6d4','#f97316','#ef4444','#10b981','#f43f5e','#60a5fa','#84cc16','#fb7185','#f59e0b'];
+let procs = [];
+let pidCounter = 1;
+
+const pidEl = document.getElementById('pid');
+const arrivalEl = document.getElementById('arrival');
+const burstEl = document.getElementById('burst');
+const priorityEl = document.getElementById('priority');
+const procTable = document.getElementById('procTable');
+const addBtn = document.getElementById('addBtn');
+const clearBtn = document.getElementById('clearBtn');
+const runBtn = document.getElementById('runBtn');
+const simulateBtn = document.getElementById('simulateBtn');
+const algorithmEl = document.getElementById('algorithm');
+const quantumEl = document.getElementById('quantum');
+const ganttEl = document.getElementById('gantt');
+const statsEl = document.getElementById('stats');
+const exportBtn = document.getElementById('exportBtn');
+const resetBtn = document.getElementById('resetBtn');
+const tip = document.getElementById('tip');
+
+function refreshPid(){ pidEl.value = 'P' + pidCounter; }
+function structuredClone(o){ return JSON.parse(JSON.stringify(o)); }
+
+function addProcess(){
+  const pid = 'P' + pidCounter++;
+  const arrival = Math.max(0, Number(arrivalEl.value) || 0);
+  const burst = Math.max(1, Math.floor(Number(burstEl.value) || 1));
+  const priority = Number(priorityEl.value) || 0;
+  procs.push({ pid, arrival, burst, priority });
+  renderTable();
+  refreshPid();
+}
+function renderTable(){
+  procTable.innerHTML = '';
+  procs.sort((a,b)=> a.arrival - b.arrival || a.pid.localeCompare(b.pid));
+  procs.forEach((p,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><span class="pid-badge" style="background:${COLORS[i%COLORS.length]}">${p.pid}</span></td>
+                    <td>${p.arrival}</td>
+                    <td>${p.burst}</td>
+                    <td>${p.priority}</td>
+                    <td><button data-i="${i}" style="padding:6px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);cursor:pointer">Delete</button></td>`;
+    procTable.appendChild(tr);
+  });
+  procTable.querySelectorAll('button').forEach(btn=>{
+    btn.onclick = ()=>{ procs.splice(Number(btn.dataset.i),1); renderTable(); };
+  });
+}
+
+addBtn.onclick = addProcess;
+clearBtn.onclick = ()=>{ procs=[]; pidCounter=1; renderTable(); refreshPid(); clearGantt(); statsEl.innerHTML=''; };
+resetBtn.onclick = ()=>{ procs=[]; pidCounter=1; renderTable(); refreshPid(); clearGantt(); statsEl.innerHTML=''; };
+
+function clearGantt(){ ganttEl.innerHTML = ''; hideTip(); }
+
+/* ----------------------
+   Scheduling algorithms
+   Each returns an array of blocks: {pid, start, end}
+   Preemptive algorithms may split one process across multiple blocks.
+   ---------------------- */
+
+function fcfs(arr){
+  const list = structuredClone(arr).sort((a,b)=>a.arrival - b.arrival || a.pid.localeCompare(b.pid));
+  let t = 0; const out = [];
+  for(const p of list){
+    const start = Math.max(t, p.arrival);
+    out.push({ pid: p.pid, start, end: start + p.burst });
+    t = start + p.burst;
+  }
+  return out;
+}
+
+function sjfNonPreemptive(arr){
+  const rem = structuredClone(arr);
+  const done = new Set(); let t = 0; const out = [];
+  while(done.size < rem.length){
+    const ready = rem.filter(p=>p.arrival <= t && !done.has(p.pid));
+    if(!ready.length){
+      t = Math.min(...rem.filter(p=>!done.has(p.pid)).map(p=>p.arrival));
+      continue;
+    }
+    ready.sort((a,b)=>a.burst - b.burst || a.arrival - b.arrival);
+    const p = ready[0];
+    const start = Math.max(t, p.arrival);
+    out.push({ pid: p.pid, start, end: start + p.burst });
+    t = start + p.burst;
+    done.add(p.pid);
+  }
+  return out;
+}
+
+/* SRTF: preemptive shortest remaining time first */
+function srtf(arr){
+  const list = structuredClone(arr).sort((a,b)=>a.arrival - b.arrival || a.pid.localeCompare(b.pid));
+  const rem = new Map(list.map(p=>[p.pid,{...p, rem:p.burst}]));
+  const out = [];
+  let t = 0, i = 0;
+  const ready = []; // holds pids
+  while(i < list.length || ready.length){
+    // add newly arrived
+    while(i < list.length && list[i].arrival <= t){
+      ready.push(list[i].pid); i++;
+    }
+    if(!ready.length){
+      // jump
+      if(i < list.length){ 
+        // idle until next arrival
+        out.push({ pid:'idle', start: t, end: list[i].arrival });
+        t = list[i].arrival;
+        continue;
+      } else break;
+    }
+    // choose ready with smallest remaining
+    ready.sort((a,b)=> rem.get(a).rem - rem.get(b).rem || rem.get(a).arrival - rem.get(b).arrival);
+    const pid = ready[0];
+    const pObj = rem.get(pid);
+    // execute 1 time unit (granular simulation)
+    const execStart = t;
+    const execEnd = t + 1;
+    out.push({ pid, start: execStart, end: execEnd });
+    pObj.rem -= 1;
+    t = execEnd;
+    // add any newly arrived while we ran
+    while(i < list.length && list[i].arrival <= t){
+      ready.push(list[i].pid); i++;
+    }
+    if(pObj.rem === 0){
+      // remove pid from ready
+      const idx = ready.indexOf(pid); if(idx>=0) ready.splice(idx,1);
+    }
+  }
+  // merge adjacent same-pid blocks
+  return mergeBlocks(out);
+}
+
+/* Priority non-preemptive */
+function priorityNP(arr){
+  const rem = structuredClone(arr);
+  const done = new Set(); let t=0; const out=[];
+  while(done.size < rem.length){
+    const ready = rem.filter(p=>p.arrival <= t && !done.has(p.pid));
+    if(!ready.length){ t = Math.min(...rem.filter(p=>!done.has(p.pid)).map(p=>p.arrival)); continue; }
+    ready.sort((a,b)=>a.priority - b.priority || a.arrival - b.arrival);
+    const p = ready[0];
+    const start = Math.max(t, p.arrival);
+    out.push({ pid: p.pid, start, end: start + p.burst });
+    t = start + p.burst;
+    done.add(p.pid);
+  }
+  return out;
+}
+
+/* Preemptive priority: at each time choose arrived process with smallest priority number (ties by arrival/pid) */
+function priorityPreemptive(arr){
+  const list = structuredClone(arr).sort((a,b)=>a.arrival - b.arrival || a.pid.localeCompare(b.pid));
+  const rem = new Map(list.map(p=>[p.pid,{...p, rem:p.burst}]));
+  const out = [];
+  let t=0, i=0;
+  const ready=[];
+  while(i<list.length || ready.length){
+    while(i<list.length && list[i].arrival <= t){ ready.push(list[i].pid); i++; }
+    if(!ready.length){
+      if(i<list.length){ out.push({pid:'idle', start:t, end:list[i].arrival}); t = list[i].arrival; continue; }
+      else break;
+    }
+    ready.sort((a,b)=>{
+      const A = rem.get(a), B = rem.get(b);
+      return A.priority - B.priority || A.arrival - B.arrival || a.localeCompare(b);
+    });
+    const pid = ready[0];
+    // execute one time unit
+    out.push({ pid, start: t, end: t+1 });
+    rem.get(pid).rem -= 1;
+    t += 1;
+    while(i<list.length && list[i].arrival <= t){ ready.push(list[i].pid); i++; }
+    if(rem.get(pid).rem === 0){
+      const idx = ready.indexOf(pid); if(idx>=0) ready.splice(idx,1);
+    }
+  }
+  return mergeBlocks(out);
+}
+
+/* Round Robin (time quantum q) */
+function roundRobin(arr, q){
+  const list = structuredClone(arr).sort((a,b)=>a.arrival - b.arrival || a.pid.localeCompare(b.pid));
+  const rem = new Map(list.map(p=>[p.pid,{...p, rem:p.burst}]));
+  const queue = [];
+  let i=0, t=0;
+  const out = [];
+  while(queue.length || i < list.length){
+    if(!queue.length){
+      // jump to next arrival
+      if(i < list.length){ 
+        if(t < list[i].arrival){
+          out.push({ pid:'idle', start:t, end:list[i].arrival }); 
+          t = list[i].arrival;
+        }
+        queue.push(list[i].pid); i++;
+      }
+    }
+    if(!queue.length) break;
+    const pid = queue.shift();
+    const p = rem.get(pid);
+    const exec = Math.min(q, p.rem);
+    const start = t; const end = t + exec;
+    out.push({ pid, start, end });
+    p.rem -= exec; t = end;
+    // add arrivals up to now
+    while(i<list.length && list[i].arrival <= t){ queue.push(list[i].pid); i++; }
+    if(p.rem > 0) queue.push(pid);
+  }
+  return mergeBlocks(out);
+}
+
+/* merge adjacent blocks with same pid to simplify rendering */
+function mergeBlocks(blocks){
+  if(!blocks.length) return [];
+  const out = [];
+  for(const b of blocks){
+    if(!out.length) out.push({...b});
+    else{
+      const last = out[out.length-1];
+      if(last.pid === b.pid && Math.abs(last.end - b.start) < 1e-9){
+        last.end = b.end; // merge
+      } else out.push({...b});
+    }
+  }
+  return out;
+}
+
+/* compute metrics: completion, turnaround, waiting */
+function computeMetrics(gantt, arr){
+  const comp = {};
+  // last end time per pid
+  for(const b of gantt) if(b.pid !== 'idle') comp[b.pid] = Math.max(comp[b.pid] || 0, b.end);
+  const metrics = arr.map(p=>{
+    const completion = comp[p.pid] ?? p.arrival; // if never run (shouldn't happen)
+    const turnaround = completion - p.arrival;
+    const waiting = turnaround - p.burst;
+    return {...p, completion, turnaround, waiting};
+  });
+  const avgTurn = metrics.reduce((s,m)=>s+m.turnaround,0)/metrics.length;
+  const avgWait = metrics.reduce((s,m)=>s+m.waiting,0)/metrics.length;
+  return { metrics, avgTurn, avgWait };
+}
+
+/* ----------------------
+   Rendering & animation
+   ---------------------- */
+function renderGantt(gantt, animate=false){
+  clearGantt();
+  if(!gantt.length) return;
+  // sort
+  gantt.sort((a,b)=>a.start - b.start);
+  // ensure idle gaps included (some algos already include idle)
+  const blocks = [];
+  let t = gantt[0].start;
+  for(const b of gantt){
+    if(b.start > t) blocks.push({ pid:'idle', start: t, end: b.start });
+    blocks.push(b);
+    t = b.end;
+  }
+  // find total time
+  const total = blocks[blocks.length-1].end;
+  const widthAvailable = Math.max(300, ganttEl.clientWidth - 24);
+  const pxPerUnit = Math.max(14, Math.floor(widthAvailable / Math.max(1, total)));
+  // create bars
+  blocks.forEach((b, idx)=>{
+    const left = Math.round(b.start * pxPerUnit);
+    const w = Math.max(2, Math.round((b.end - b.start) * pxPerUnit));
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.left = (left + 8) + 'px';
+    bar.style.width = animate ? '0px' : (w + 'px');
+    bar.style.height = '60px';
+    bar.dataset.targetWidth = w;
+    if(b.pid === 'idle'){
+      bar.style.background = 'linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))';
+      bar.style.color = 'var(--muted)';
+      bar.innerHTML = `<span class="lab">Idle ${b.start}→${b.end}</span>`;
+    } else {
+      const index = Math.max(0, parseInt(b.pid.slice(1)) - 1);
+      const color = COLORS[index % COLORS.length];
+      bar.style.background = color;
+      bar.innerHTML = `<span class="lab">${b.pid} ${b.start}→${b.end}</span>`;
+      // glow effect for running blocks
+      bar.classList.add('glow');
+    }
+    // tooltips
+    bar.addEventListener('mouseenter', (e)=> showTip(e, b));
+    bar.addEventListener('mousemove', (e)=> moveTip(e));
+    bar.addEventListener('mouseleave', hideTip);
+    ganttEl.appendChild(bar);
+  });
+
+  // animate if requested: slide bars in sequence then fill
+  if(animate){
+    const bars = Array.from(ganttEl.querySelectorAll('.bar'));
+    let delay = 80;
+    bars.forEach((bar, i)=>{
+      // initial tiny translate for slide-in
+      bar.style.transform = 'translateY(6px)';
+      bar.style.opacity = '0';
+      setTimeout(()=>{
+        bar.style.transition = 'transform 280ms cubic-bezier(.2,.9,.3,1), opacity 220ms, width 540ms cubic-bezier(.2,.9,.3,1)';
+        bar.style.transform = 'translateY(0px)';
+        bar.style.opacity = '1';
+      }, delay);
+      // expand width slightly after slide
+      setTimeout(()=> {
+        bar.style.width = bar.dataset.targetWidth + 'px';
+      }, delay + 120);
+      delay += 160;
+    });
+  } else {
+    // immediate reveal
+    const bars = Array.from(ganttEl.querySelectorAll('.bar'));
+    bars.forEach(b=>{ b.style.opacity = 1; b.style.transform='translateY(0)'; });
+  }
+}
+
+/* tooltip helpers */
+function showTip(e, block){
+  tip.style.display = 'block';
+  tip.innerHTML = (block.pid === 'idle')
+    ? `Idle<br>${block.start} → ${block.end}`
+    : `${block.pid}<br>Start: ${block.start}<br>End: ${block.end}`;
+  moveTip(e);
+}
+function moveTip(e){
+  const pad = 12;
+  tip.style.left = (e.pageX + pad) + 'px';
+  tip.style.top = (e.pageY + pad) + 'px';
+}
+function hideTip(){ tip.style.display = 'none'; }
+function hideTipInstant(){ tip.style.display = 'none'; }
+
+/* ----------------------
+   Runner
+   ---------------------- */
+function runOnce(animate=false){
+  if(!procs.length){ alert('Add at least one process'); return; }
+  const alg = algorithmEl.value;
+  let gantt = [];
+  if(alg === 'fcfs') gantt = fcfs(procs);
+  else if(alg === 'sjf') gantt = sjfNonPreemptive(procs);
+  else if(alg === 'srtf') gantt = srtf(procs);
+  else if(alg === 'priority') gantt = priorityNP(procs);
+  else if(alg === 'pp') gantt = priorityPreemptive(procs);
+  else if(alg === 'rr') gantt = roundRobin(procs, Math.max(1, Number(quantumEl.value) || 1));
+
+  // merge any adjacents (some algos already merged)
+  gantt = mergeBlocks(gantt);
+
+  renderGantt(gantt, animate);
+  const { avgTurn, avgWait } = computeMetrics(gantt, procs);
+  statsEl.innerHTML = '';
+  const s1 = document.createElement('div'); s1.className='stat'; s1.innerHTML = `<h3>${avgTurn.toFixed(2)}</h3><p>Avg Turnaround</p>`;
+  const s2 = document.createElement('div'); s2.className='stat'; s2.innerHTML = `<h3>${avgWait.toFixed(2)}</h3><p>Avg Waiting</p>`;
+  const s3 = document.createElement('div'); s3.className='stat'; s3.innerHTML = `<h3>${procs.length}</h3><p>Processes</p>`;
+  statsEl.appendChild(s1); statsEl.appendChild(s2); statsEl.appendChild(s3);
+}
+
+/* attach events */
+runBtn.onclick = ()=> { hideTipInstant(); runOnce(false); };
+simulateBtn.onclick = ()=> { hideTipInstant(); runOnce(true); };
+exportBtn.onclick = ()=>{
+  if(!procs.length){ alert('No processes to export'); return; }
+  let csv = 'PID,Arrival,Burst,Priority\n';
+  procs.forEach(p=> csv += `${p.pid},${p.arrival},${p.burst},${p.priority}\n`);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'processes.csv'; a.click();
+  URL.revokeObjectURL(url);
+};
+
+/* keyboard: Enter to add from any field */
+[arrivalEl, burstEl, priorityEl].forEach(el=> el.addEventListener('keydown', e=> { if(e.key === 'Enter') addProcess(); }));
+
+refreshPid();
+renderTable();
+
+/* make canvas responsive on resize: re-run last algorithm if user wants updated size
+   We choose not to auto re-run; user can press Run/Animate. (faster & predictable) */
+
+</script>
+</body>
+</html>
